@@ -1,0 +1,17 @@
+# Local TLS material used by https_server.py
+cert.pem
+key.pem
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Local browser smoke-test profiles and captures
+.edge-smoke/
+smoke.png
+
+# Common OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
