@@ -28,17 +28,17 @@
       </header>
 
       <section class="intro" aria-live="polite">
-        <p id="view-kicker" class="kicker">01 — The flag picture</p>
-        <h1 id="view-title">A rotation has memory.</h1>
-        <p id="view-copy" class="lede">Follow the colored frames around a Bloch sphere. One full turn changes the spinor’s sign; only the second turn brings it home.</p>
+        <p id="view-kicker" class="kicker">05 — Concentric material shells</p>
+        <h1 id="view-title">Every radius keeps its place.</h1>
+        <p id="view-copy" class="lede">Fixed angular labels connect a rotating inner sphere to a stationary outer one. The nonsingular quaternion filling lets every material wire return straight after 720°.</p>
       </section>
 
       <nav class="view-tabs" aria-label="Visualization views">
-        <button class="view-tab active" data-view="flags" type="button"><span>01</span> Flags</button>
+        <button class="view-tab" data-view="flags" type="button"><span>01</span> Flags</button>
         <button class="view-tab" data-view="su2" type="button"><span>02</span> SU(2)</button>
         <button class="view-tab" data-view="belt" type="button"><span>03</span> Belt trick</button>
         <button class="view-tab" data-view="wires" type="button"><span>04</span> Wires</button>
-        <button class="view-tab" data-view="shells" type="button"><span>05</span> Shells</button>
+        <button class="view-tab active" data-view="shells" type="button"><span>05</span> Shells</button>
       </nav>
 
       <aside class="control-panel">
@@ -52,14 +52,14 @@
           <strong id="speed-value">22°/s</strong>
         </div>
         <input id="speed-slider" type="range" min="0" max="900" step="1" value="22" aria-label="Rotation speed in degrees per second, up to 900" />
-        <div id="flag-count-control">
+        <div id="flag-count-control" class="hidden">
           <div class="readout divided-readout">
             <span>Number of flags</span>
             <strong id="flag-count-value">12</strong>
           </div>
           <input id="flag-count-slider" type="range" min="0" max="3" step="1" value="1" aria-label="Number of flags: 6, 12, 24, or 48" />
         </div>
-        <details id="shell-options" class="shell-options hidden">
+        <details id="shell-options" class="shell-options">
           <summary>Concentric shell settings</summary>
           <div class="select-grid">
             <label>
@@ -97,17 +97,18 @@
           </label>
           <div class="toggle-grid">
             <label><input id="shell-show-inner" type="checkbox" checked /> Inner sphere</label>
-            <label><input id="shell-show-outer" type="checkbox" checked /> Outer sphere</label>
+            <label><input id="shell-show-outer" type="checkbox" /> Outer sphere</label>
             <label><input id="shell-show-shells" type="checkbox" /> Faint shells</label>
             <label><input id="shell-show-endpoints" type="checkbox" /> Endpoints</label>
             <label><input id="shell-inner-opaque" type="checkbox" checked /> Opaque inner</label>
             <label><input id="shell-side-tubes" type="checkbox" checked /> Square tubes</label>
+            <label><input id="shell-flat-tubes" type="checkbox" checked /> Flat tubes (6:1)</label>
           </div>
         </details>
         <div class="button-row">
           <button id="pause-button" class="primary-button" type="button">Pause</button>
           <button id="render-button" class="secondary-button" type="button">Stop rendering</button>
-          <button id="random-button" class="secondary-button hidden" type="button">New SU(2)</button>
+          <button id="random-button" class="secondary-button" type="button">New S³ circle</button>
           <button id="reset-button" class="secondary-button" type="button">Reset</button>
           <button id="vr-button" class="secondary-button" type="button">Enter VR</button>
         </div>

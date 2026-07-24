@@ -42,12 +42,15 @@ interpolation and a random great-circle trajectory on S³.
 - The shell settings control 6–500 wires, radial-sample counts, both radii, X/Y/Z
   spin axes, boundary and endpoint visibility, inner-sphere opacity,
   quaternion-filling mode, and a square-cross-section tube alternative using
-  the same configurable count as the wire bundle.
+  the same configurable count as the wire bundle. Tubes can optionally use a
+  flattened rectangular section whose broad side is six times its thin side.
 - Pause, rendering, reset, random-generator, and WebXR controls are available
   contextually.
 
 ## Current Default Configuration (`src/config.js`)
 
+- Initial scene: concentric shells with the outer sphere hidden.
+- Inner sphere: opaque, radius `0.20`, with 12 flat 6:1 material tubes.
 - Perspective camera: 38° field of view, position `(5.8, 3.8, 7.8)`.
 - Bloch sphere radius: `1.62` scene units.
 - Flag sample count: `12`.
@@ -107,6 +110,18 @@ four dimensions, then follows their great circle. A normalized Gaussian-CDF
 shell profile makes the quaternion interpolation nearly stationary next to
 both boundary spheres and concentrates the visible change between them.
 
+Square tubes carry a complete material frame, not only a centerline tangent.
+For each angular label, a fixed tangent-plane basis is rotated by the shell
+quaternion and projected onto the plane normal to the local tube direction.
+The exact radial tangent and identity quaternion pin the complete outer
+cross-section frame, while the same construction carries the intended torsion
+through the interior and onto the rotating inner sphere.
+
+The inner sphere uses a simple generated meridian-and-parallel texture. Its
+texture pole is aligned with the selected rotation axis; random S³ circles use
+the corresponding body-fixed axis so that the textured pole remains on the
+derived space-fixed spin axis throughout the motion.
+
 ## Run (no npm required)
 First stage of development (fast), just use a http server and a browser on same machine.
 Second stage (slow), use a https server and quest3 for 3d visualization.
@@ -144,12 +159,18 @@ files are local machine material and are intentionally not committed. If the
 Quest browser warns about a self-signed certificate, accept/trust it before
 pressing `Enter VR`.
 
-In VR, the scene starts in front of you at a smaller scale. Hold either trigger
-or grip and move/rotate your controller to rotate the visualization. Use the
-right thumbstick up/down to zoom. Press the right-side secondary button such as
-`B` to exit VR. If the browser maps Quest face buttons differently, either
-right-side face button will request exit. WebXR foveation is set to `0` for
-full-resolution rendering.
+In VR, animation continues while the scene is centered at eye height, three
+meters ahead, at 34% of its desktop scale. Hold either controller’s trigger or
+grip to attach the visualization at its current world pose; hand motion and
+rotation then directly manipulate it without snapping or rescaling. Releasing
+leaves it at the dropped world position and orientation. Use the right
+thumbstick up/down to zoom, including while the object is held. Press `B` on
+the right Quest controller to exit VR.
+Press `A` to show or hide the in-world settings board. While it is visible,
+use the right thumbstick up/down to select a row and left/right to change its
+value. When the board is hidden, the right thumbstick controls zoom again. The
+board exposes visualization selection, animation speed, quaternion mode, axes,
+geometry density, radii, visibility, opacity, and tube shape.
 
 ## Tests
 

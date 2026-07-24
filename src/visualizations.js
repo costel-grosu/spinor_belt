@@ -27,10 +27,49 @@ const COLORS = [0xf05b4f, 0xf6b73c, 0xc9e43b, 0x31bea6, 0x3c8ddb, 0x7059d9, 0xd8
 function disposeGroup(group) {
   group.traverse((child) => {
     child.geometry?.dispose();
-    if (Array.isArray(child.material)) child.material.forEach((m) => m.dispose());
-    else child.material?.dispose();
+    const disposeMaterial = (material) => {
+      material.map?.dispose();
+      material.dispose();
+    };
+    if (Array.isArray(child.material)) child.material.forEach(disposeMaterial);
+    else if (child.material) disposeMaterial(child.material);
   });
   group.clear();
+}
+
+function makeInnerSphereTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const context = canvas.getContext("2d");
+
+  context.fillStyle = "#e8e4f4";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  context.strokeStyle = "rgba(23, 33, 29, 0.62)";
+  context.lineWidth = 4;
+  for (let longitude = 0; longitude <= 12; longitude++) {
+    const x = longitude * canvas.width / 12;
+    context.lineWidth = longitude === 6 ? 9 : 4;
+    context.beginPath();
+    context.moveTo(x, 0);
+    context.lineTo(x, canvas.height);
+    context.stroke();
+  }
+  for (let latitude = 1; latitude < 8; latitude++) {
+    const y = latitude * canvas.height / 8;
+    context.lineWidth = latitude === 4 ? 9 : 4;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(canvas.width, y);
+    context.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.ClampToEdgeWrapping;
+  return texture;
 }
 
 function sphereShell() {
@@ -551,7 +590,7 @@ export class ShellTubeBundle {
     this.mesh.geometry.setIndex(indices);
   }
 
-  update(innerRadius, outerRadius, quaternionAt) {
+  update(innerRadius, outerRadius, quaternionAt, crossSectionAspect = 1) {
     const quaternions = [];
     for (let radial = 0; radial < this.radialSamples; radial++) {
       const fraction = radial / (this.radialSamples - 1);
@@ -591,44 +630,117 @@ export class ShellTubeBundle {
       0.008,
       Math.min(0.045, outerRadius * 0.14 / Math.sqrt(this.tubeCount)),
     );
+    const normalHalfExtent = crossSectionAspect > 1
+      ? thickness
+      : thickness * Math.SQRT1_2;
+    const binormalHalfExtent = crossSectionAspect > 1
+      ? thickness / crossSectionAspect
+      : thickness * Math.SQRT1_2;
     const positionAttribute = this.mesh.geometry.getAttribute("position");
     const positions = positionAttribute.array;
     const sides = 4;
+    const cornerCoefficients = [
+      normalHalfExtent, binormalHalfExtent,
+      -normalHalfExtent, binormalHalfExtent,
+      -normalHalfExtent, -binormalHalfExtent,
+      normalHalfExtent, -binormalHalfExtent,
+    ];
     for (let tube = 0; tube < this.tubeCount; tube++) {
       const tubeCenter = tube * this.radialSamples * 3;
-      let normalX = 0;
-      let normalY = 0;
-      let normalZ = 0;
+      const [labelX, labelY, labelZ] = this.labels[tube];
+      const referenceX = Math.abs(labelX) < 0.9 ? 1 : 0;
+      const referenceY = referenceX === 1 ? 0 : 1;
+      const referenceProjection =
+        referenceX * labelX + referenceY * labelY;
+      let materialNormalX = referenceX - referenceProjection * labelX;
+      let materialNormalY = referenceY - referenceProjection * labelY;
+      let materialNormalZ = -referenceProjection * labelZ;
+      const materialNormalLength = Math.hypot(
+        materialNormalX,
+        materialNormalY,
+        materialNormalZ,
+      );
+      materialNormalX /= materialNormalLength;
+      materialNormalY /= materialNormalLength;
+      materialNormalZ /= materialNormalLength;
+      const materialBinormalX =
+        labelY * materialNormalZ - labelZ * materialNormalY;
+      const materialBinormalY =
+        labelZ * materialNormalX - labelX * materialNormalZ;
+      const materialBinormalZ =
+        labelX * materialNormalY - labelY * materialNormalX;
+
       for (let radial = 0; radial < this.radialSamples; radial++) {
         const centerOffset = tubeCenter + radial * 3;
-        const previousOffset = tubeCenter + Math.max(0, radial - 1) * 3;
-        const nextOffset = tubeCenter +
-          Math.min(this.radialSamples - 1, radial + 1) * 3;
-        let tangentX = this.centerScratch[nextOffset] -
-          this.centerScratch[previousOffset];
-        let tangentY = this.centerScratch[nextOffset + 1] -
-          this.centerScratch[previousOffset + 1];
-        let tangentZ = this.centerScratch[nextOffset + 2] -
-          this.centerScratch[previousOffset + 2];
+        const centerX = this.centerScratch[centerOffset];
+        const centerY = this.centerScratch[centerOffset + 1];
+        const centerZ = this.centerScratch[centerOffset + 2];
+        let tangentX;
+        let tangentY;
+        let tangentZ;
+        if (radial === 0 || radial === this.radialSamples - 1) {
+          // The Gaussian profile is nearly flat at both ends. Use the exact
+          // material radial direction there so Q=identity pins the complete
+          // outer attachment frame, not only its center point.
+          const radialLength = Math.hypot(centerX, centerY, centerZ) || 1;
+          tangentX = centerX / radialLength;
+          tangentY = centerY / radialLength;
+          tangentZ = centerZ / radialLength;
+        } else {
+          const previousOffset = centerOffset - 3;
+          const nextOffset = centerOffset + 3;
+          tangentX = this.centerScratch[nextOffset] -
+            this.centerScratch[previousOffset];
+          tangentY = this.centerScratch[nextOffset + 1] -
+            this.centerScratch[previousOffset + 1];
+          tangentZ = this.centerScratch[nextOffset + 2] -
+            this.centerScratch[previousOffset + 2];
+        }
         const tangentLength = Math.hypot(tangentX, tangentY, tangentZ) || 1;
         tangentX /= tangentLength;
         tangentY /= tangentLength;
         tangentZ /= tangentLength;
 
-        if (radial === 0) {
-          const refX = Math.abs(tangentX) < 0.9 ? 1 : 0;
-          const refY = refX === 1 ? 0 : 1;
-          normalX = tangentY * 0 - tangentZ * refY;
-          normalY = tangentZ * refX - tangentX * 0;
-          normalZ = tangentX * refY - tangentY * refX;
-        } else {
-          const tangentComponent =
-            normalX * tangentX + normalY * tangentY + normalZ * tangentZ;
-          normalX -= tangentComponent * tangentX;
-          normalY -= tangentComponent * tangentY;
-          normalZ -= tangentComponent * tangentZ;
-        }
+        const quaternion = quaternions[radial].quaternion ??
+          quaternions[Math.max(0, radial - 1)].quaternion ??
+          quaternions[Math.min(this.radialSamples - 1, radial + 1)].quaternion ??
+          { w: 1, v: [0, 0, 0] };
+        const [qx, qy, qz] = quaternion.v;
+        const qw = quaternion.w;
+        const rotateMaterialVector = (vectorX, vectorY, vectorZ) => {
+          const tx = 2 * (qy * vectorZ - qz * vectorY);
+          const ty = 2 * (qz * vectorX - qx * vectorZ);
+          const tz = 2 * (qx * vectorY - qy * vectorX);
+          return [
+            vectorX + qw * tx + qy * tz - qz * ty,
+            vectorY + qw * ty + qz * tx - qx * tz,
+            vectorZ + qw * tz + qx * ty - qy * tx,
+          ];
+        };
+        let [normalX, normalY, normalZ] = rotateMaterialVector(
+          materialNormalX,
+          materialNormalY,
+          materialNormalZ,
+        );
+        const tangentComponent =
+          normalX * tangentX + normalY * tangentY + normalZ * tangentZ;
+        normalX -= tangentComponent * tangentX;
+        normalY -= tangentComponent * tangentY;
+        normalZ -= tangentComponent * tangentZ;
         let normalLength = Math.hypot(normalX, normalY, normalZ);
+        if (normalLength < 1e-8) {
+          [normalX, normalY, normalZ] = rotateMaterialVector(
+            materialBinormalX,
+            materialBinormalY,
+            materialBinormalZ,
+          );
+          const fallbackProjection =
+            normalX * tangentX + normalY * tangentY + normalZ * tangentZ;
+          normalX -= fallbackProjection * tangentX;
+          normalY -= fallbackProjection * tangentY;
+          normalZ -= fallbackProjection * tangentZ;
+          normalLength = Math.hypot(normalX, normalY, normalZ);
+        }
         if (normalLength < 1e-8) {
           const refX = Math.abs(tangentX) < 0.9 ? 1 : 0;
           const refY = refX === 1 ? 0 : 1;
@@ -643,26 +755,18 @@ export class ShellTubeBundle {
         const binormalX = tangentY * normalZ - tangentZ * normalY;
         const binormalY = tangentZ * normalX - tangentX * normalZ;
         const binormalZ = tangentX * normalY - tangentY * normalX;
-        const centerX = this.centerScratch[centerOffset];
-        const centerY = this.centerScratch[centerOffset + 1];
-        const centerZ = this.centerScratch[centerOffset + 2];
         const ringOffset =
           (tube * this.radialSamples * sides + radial * sides) * 3;
-        const ringDirections = [
-          normalX, normalY, normalZ,
-          binormalX, binormalY, binormalZ,
-          -normalX, -normalY, -normalZ,
-          -binormalX, -binormalY, -binormalZ,
-        ];
         for (let side = 0; side < sides; side++) {
           const vertexOffset = ringOffset + side * 3;
-          const directionOffset = side * 3;
+          const normalScale = cornerCoefficients[side * 2];
+          const binormalScale = cornerCoefficients[side * 2 + 1];
           positions[vertexOffset] =
-            centerX + ringDirections[directionOffset] * thickness;
+            centerX + normalX * normalScale + binormalX * binormalScale;
           positions[vertexOffset + 1] =
-            centerY + ringDirections[directionOffset + 1] * thickness;
+            centerY + normalY * normalScale + binormalY * binormalScale;
           positions[vertexOffset + 2] =
-            centerZ + ringDirections[directionOffset + 2] * thickness;
+            centerZ + normalZ * normalScale + binormalZ * binormalScale;
         }
       }
     }
@@ -711,11 +815,18 @@ function randomGreatCircle() {
     -tangent.w * oy + origin.w * ty - (tz * ox - tx * oz),
     -tangent.w * oz + origin.w * tz - (tx * oy - ty * ox),
   ];
+  const bodyAxis = [
+    origin.w * tx - tangent.w * ox - (oy * tz - oz * ty),
+    origin.w * ty - tangent.w * oy - (oz * tx - ox * tz),
+    origin.w * tz - tangent.w * oz - (ox * ty - oy * tx),
+  ];
   const axisLength = Math.hypot(...spaceAxis);
+  const bodyAxisLength = Math.hypot(...bodyAxis);
   return {
     origin,
     tangent,
     spaceAxis: spaceAxis.map((component) => component / axisLength),
+    bodyAxis: bodyAxis.map((component) => component / bodyAxisLength),
   };
 }
 
@@ -730,11 +841,12 @@ export class ConcentricShellView {
       axis: "z",
       mode: "nonsingular",
       showInner: true,
-      showOuter: true,
+      showOuter: false,
       showShells: false,
       showEndpoints: false,
       innerOpaque: true,
       sideTubes: true,
+      flatTubes: true,
       ...options,
     };
     this.randomCircle = randomGreatCircle();
@@ -756,13 +868,16 @@ export class ConcentricShellView {
       }),
     );
     this.innerRotor = new THREE.Group();
+    this.innerTexture = makeInnerSphereTexture();
     this.innerSphere = new THREE.Mesh(
       new THREE.SphereGeometry(1, 24, 16),
       new THREE.MeshStandardMaterial({
-        color: 0x7658d6,
-        wireframe: true,
+        color: 0xffffff,
+        map: this.innerTexture,
+        wireframe: false,
         transparent: true,
         opacity: 0.62,
+        roughness: 0.58,
       }),
     );
     this.innerFrame = new THREE.Group();
@@ -810,6 +925,12 @@ export class ConcentricShellView {
       y: [0, 1, 0],
       z: [0, 0, 1],
     }[this.options.axis] ?? [0, 0, 1];
+  }
+
+  textureAxisVector() {
+    return this.options.mode === "random"
+      ? this.randomCircle.bodyAxis
+      : this.axisVector();
   }
 
   randomInnerQuaternion(time) {
@@ -866,7 +987,7 @@ export class ConcentricShellView {
     this.outerSphere.scale.setScalar(this.options.outerRadius);
     this.innerSphere.scale.setScalar(this.options.innerRadius);
     this.innerFrame.scale.setScalar(this.options.innerRadius * 0.78);
-    this.innerSphere.material.wireframe = !this.options.innerOpaque;
+    this.innerSphere.material.wireframe = false;
     this.innerSphere.material.transparent = !this.options.innerOpaque;
     this.innerSphere.material.opacity = this.options.innerOpaque ? 1 : 0.62;
     this.innerSphere.material.depthWrite = this.options.innerOpaque;
@@ -891,6 +1012,10 @@ export class ConcentricShellView {
       this.options.outerRadius * 2.3,
       0.2,
       0.1,
+    );
+    this.innerSphere.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(...this.textureAxisVector()),
     );
   }
 
@@ -924,6 +1049,7 @@ export class ConcentricShellView {
         this.options.innerRadius,
         this.options.outerRadius,
         (shellCoordinate) => this.quaternionAt(shellCoordinate, time),
+        this.options.flatTubes ? 6 : 1,
       );
     }
     this.intermediateShells.children.forEach((shell, index) => {
