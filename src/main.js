@@ -179,13 +179,11 @@ function syncViewUI(key) {
   ui.title.textContent = copy.title;
   ui.copy.textContent = copy.copy;
   ui.random.classList.toggle("hidden", key === "flags");
-  ui.random.textContent = key === "belt"
-    ? "Regenerate spinors"
-    : key === "wires" ? "Toggle initial flip"
+  ui.random.textContent = key === "wires" ? "Toggle initial flip"
       : key === "shells" ? "New S³ circle" : "New SU(2)";
   ui.flagCountControl.classList.toggle(
     "hidden",
-    key === "belt" || key === "wires" || key === "shells",
+    key === "wires" || key === "shells",
   );
   ui.shellOptions.classList.toggle("hidden", key !== "shells");
   ui.shellAxis.disabled = shellOptions.mode === "random";
@@ -221,7 +219,7 @@ ui.speedSlider.addEventListener("input", () => {
 ui.flagCountSlider.addEventListener("input", () => {
   selectedFlagCount = flagCounts[Number(ui.flagCountSlider.value)];
   ui.flagCount.textContent = String(selectedFlagCount);
-  if (currentKey !== "belt") replaceView(currentKey, { preserveAxis: true });
+  replaceView(currentKey, { preserveAxis: true });
 });
 
 function updateShellOptions(changes) {
@@ -388,7 +386,7 @@ vrSettingsRows = [
     label: "Visualization",
     value: () => VIEW_COPY[currentKey].kicker.slice(0, 2) + " " + currentKey,
     adjust: (direction) => {
-      const views = ["flags", "su2", "belt", "wires", "shells"];
+      const views = ["shells", "flags", "su2", "wires"];
       selectView(cycleSetting(views, currentKey, direction));
     },
   },

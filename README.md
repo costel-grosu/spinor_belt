@@ -1,28 +1,51 @@
 # Explore spinor representations
 
-A no-build Three.js visualization of spinors ,just C2 spinors that transform with SU(2).
+A no-build Three.js visualization of spinors, just C2 spinors that transform with SU(2).
+
+Not AI text:
+Basically we have a sphere, and in the middle we have "smth" rotating compared with the fixed sphere surface/rest of the world.
+This should show how "smth" which is connected by wires to the rest of the world, can rotate indefinitely without tangling the wires.
+This is also a visualization of a spinor rotating, which means that after one rotation (2 pi) it swiches direction, and only after 2 rotations it returns to the initial value.
+
+It was quite difficult to arrive at an agreement with GPT about what I want and how it should work, but in the end we found together a simple idea / implementation.
+
+So in the middle of the sphere we put a rotating SU(2) matrix, which is implemented as a rotating unit quartenion.
+Basically this is a point on S3 (the sphere in 4 dimensions), and when we rotate it, it just means the point moves along a big circle around the S3 sphere.
+Then we interpolate from this central value put in the middle the S2 sphere (the normal sphere in 3 dimensions that we know and love) to the surface of the S2 sphere, where we have 0 rotation or transformation, i.e. the identity quartenion 1.
+
+Implementation wise, we have a 3d quartenion field that evolves in time, which interpolates from the rotating quartenion value in the centre (or a small sphere in the centre, for better visibility) to the identity quartenion on a outer sphere. Each unit quartenion value on the field is equivalent to a SU(2) matrix, or a value on S3 sphere, or with a SO(3) matrix after projection. Also for each SU(2) we have an equivalent spinor (just take the first column). So in a way this is a rotating spinor field. We use quartenions for the state/values, and after quartenion conjugation we get normal 3D rotations.
+
+The interesting part is that this simple interpolation, with full radial symmetry, encodes the way the lines/wires move naturally to not get tangled, sometimes they pass on one side of the center, sometimes they pass on the other side of the center.
+
+Now the difficult part is how to compute and draw the shape of the wires. The wires should have one end fixed on the outer sphere, and the other end fixed on the rotating center sphere. The local SU(2) rotation in each point should influence the wire shape. Initially I thought that geodesics should be enough to describe the wires, but GPT math dissagreed. 
+GPT suggested some integral curves, but it seemed to me it is difficult to finetune them. 
+In the end the solution is to have many concentric sphere/shells, each is rotated a small ammount according to the local interpolation value. Then connect directly the corresponding points from all the spheres and we get a trajectory/wire that looks like what we want.
+Minor: there are some small problems with a singularity when trying to find an interpolation from 1 to -1 quartenions (too many options, and a 0 quartenion which is not fun) but this happens only when we try to rotate the identity quartenion/rotation.
+Then there is more work for visual improvements to the interpolation curve (still work in progress), shape of wires, etc.
+
+Also interesting to see the animation in VR, where we can get a better feel for the 3D shape we are watching. We can look at it small in the hand, or make it as big as a house rotating around us.
+Check this doc for the VR controller shortcuts.
 
 ## What It Shows
 
 Switch between multiple views.
 
-View 1: represent spinors as flags.
+View 1: concentric spherical shells carry fixed angular labels between a
+rotating inner sphere and a stationary outer sphere. Material wires use the
+explicit nonsingular quaternion filling, with controls for the naïve
+interpolation and a random great-circle trajectory on S³.
+
+View 2: represent spinors as flags.
 Take the Bloch sphere, and add spinors for all axis. Then rotate the sphere on a plane, show how the spinors / flags transform.
 Use different colors for each spinor/flag.
 
-View 2: take the same Bloch sphere and spinors, and slowly rotate with random SU2 matrix. Button to generate a new SU2 matrix.
-
-View 3: Dirac belt. Interpolate from one fixed spinor to another rotating spinor. Both spinors have fixed R3 position, and the curve need to interpolate both the orientation given by the spinors and the R3 position.
+View 3: take the same Bloch sphere and spinors, and slowly rotate with random SU2 matrix. Button to generate a new SU2 matrix.
 
 View 4: trace three colored families of RK4 integral curves through a compact
 SU(2) quaternion field. The central frame completes a 4π spin while the field
 stays fixed outside its active radius; an off-axis escape term keeps the
 intermediate field nonsingular.
-
-View 5: concentric spherical shells carry fixed angular labels between a
-rotating inner sphere and a stationary outer sphere. Material wires use the
-explicit nonsingular quaternion filling, with controls for the naïve
-interpolation and a random great-circle trajectory on S³.
+This is the initial suggestion from GPT, probably can be made to work too.
 
 ## Runtime Controls
 
@@ -34,8 +57,8 @@ interpolation and a random great-circle trajectory on S³.
 
 ## HUD
 
-- Five view tabs switch between the flag, SU(2), belt-trick, quaternion-field,
-  and concentric-shell scenes.
+- Four view tabs switch between the concentric-shell, flag, SU(2), and
+  quaternion-field scenes.
 - The angle slider scrubs the full 0–720° spinor cycle.
 - The speed slider controls automatic rotation from 0–900 degrees per second in every view.
 - The flag-count slider switches between 6, 12, 24, and 48 flags in the flag-based views.
@@ -71,7 +94,7 @@ interpolation and a random great-circle trajectory on S³.
 - `src/config.js`: camera and visualization defaults.
 - `src/spinor-math.js`: rendering-independent spinor and geometry calculations.
 - `src/main.js`: renderer, lifecycle, UI, and WebXR session handling.
-- `src/visualizations.js`: flag, SU(2), belt, quaternion-field, and
+- `src/visualizations.js`: flag, SU(2), quaternion-field, and
   concentric-shell scene implementations.
 
 The sphere views keep their states as explicit normalized C² spinor arrays.
@@ -85,15 +108,6 @@ For the flag representation, each transformed spinor is decomposed as
 `exp(i * gamma) * canonicalSpinor(blochDirection)`. The Bloch direction places
 the pole, while `gamma` alone rotates the cloth hinge. No animation angle is
 passed separately into the flag mapping.
-
-The belt view exposes its fixed and rotating endpoint spinors as flags. Belt
-cross-sections are generated from spinors along the same SU(2) path, ensuring
-that both ends match the corresponding flag orientations.
-
-Its regenerate control creates two new random normalized spinors and a random
-rotation axis. The belt centerline is a Hermite curve whose endpoint tangents
-follow the outward flagpole directions, allowing outward-facing flags to pull
-the belt into a detour before it returns to the opposite endpoint.
 
 The wire view implements a smooth compact radial profile, composes its initial
 texture with the 4π spin loop in space-fixed order, and integrates the induced

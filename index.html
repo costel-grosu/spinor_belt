@@ -28,17 +28,16 @@
       </header>
 
       <section class="intro" aria-live="polite">
-        <p id="view-kicker" class="kicker">05 — Concentric material shells</p>
+        <p id="view-kicker" class="kicker">01 — Concentric material shells</p>
         <h1 id="view-title">Every radius keeps its place.</h1>
         <p id="view-copy" class="lede">Fixed angular labels connect a rotating inner sphere to a stationary outer one. The nonsingular quaternion filling lets every material wire return straight after 720°.</p>
       </section>
 
       <nav class="view-tabs" aria-label="Visualization views">
-        <button class="view-tab" data-view="flags" type="button"><span>01</span> Flags</button>
-        <button class="view-tab" data-view="su2" type="button"><span>02</span> SU(2)</button>
-        <button class="view-tab" data-view="belt" type="button"><span>03</span> Belt trick</button>
+        <button class="view-tab active" data-view="shells" type="button"><span>01</span> Shells</button>
+        <button class="view-tab" data-view="flags" type="button"><span>02</span> Flags</button>
+        <button class="view-tab" data-view="su2" type="button"><span>03</span> SU(2)</button>
         <button class="view-tab" data-view="wires" type="button"><span>04</span> Wires</button>
-        <button class="view-tab active" data-view="shells" type="button"><span>05</span> Shells</button>
       </nav>
 
       <aside class="control-panel">
@@ -119,7 +118,7 @@
         <button id="about-close" class="dialog-close" type="button" aria-label="Close">×</button>
         <p class="kicker">A small geometric intuition</p>
         <h2>Spinors need two turns.</h2>
-        <p>A vector returns after a 360° rotation. A spinor changes sign instead, and returns to its original state only after 720°. These scenes make that hidden phase visible as flags, motion on SU(2), a belt that untwists, vector-field wires, and material wires joining concentric shells.</p>
+        <p>A vector returns after a 360° rotation. A spinor changes sign instead, and returns to its original state only after 720°. These scenes make that hidden phase visible as flags, motion on SU(2), vector-field wires, and material wires joining concentric shells.</p>
       </dialog>
 
       <div id="error" class="error hidden" role="alert"></div>

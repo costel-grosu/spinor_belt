@@ -1,7 +1,6 @@
 import * as THREE from "three";
 import { CONFIG } from "./config.js";
 import {
-  beltSurface,
   blochDirectionFromSpinor,
   choosePerpendicularDirection,
   createSpinorArray,
@@ -174,67 +173,6 @@ export class SU2View {
     this.states.children.forEach((flag, index) => {
       setFlagOnSphere(flag, this.transformedSpinors[index]);
     });
-  }
-  dispose() { disposeGroup(this.group); }
-}
-
-export class BeltView {
-  constructor() {
-    this.group = new THREE.Group();
-    this.rotationAxis = randomUnitDirection();
-    this.spinors = [randomSpinor(), randomSpinor()];
-    this.transformedSpinors = [...this.spinors];
-    this.su2Matrix = identitySU2();
-    this.material = new THREE.MeshStandardMaterial({ color: 0x7658d6, side: THREE.DoubleSide, roughness: 0.58, vertexColors: true });
-    this.belt = new THREE.Mesh(new THREE.BufferGeometry(), this.material);
-    this.group.add(this.belt);
-    const endMaterial = new THREE.MeshStandardMaterial({ color: 0x17211d, roughness: 0.5 });
-    this.endMounts = [];
-    for (const x of [-2.45, 2.45]) {
-      const end = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), endMaterial.clone());
-      end.position.x = x;
-      this.endMounts.push(end);
-      this.group.add(end);
-    }
-    this.endpointFlags = [makeFlag(this.spinors[0], 0x5b48cb), makeFlag(this.spinors[1], 0xe96b62)];
-    this.endpointFlags.forEach((flag, index) => {
-      flag.position.x = index === 0 ? -2.4 : 2.4;
-      flag.scale.setScalar(0.9);
-      this.group.add(flag);
-    });
-    this.update(0);
-  }
-  randomize(angle = 0) {
-    this.rotationAxis = randomUnitDirection();
-    this.spinors = [randomSpinor(), randomSpinor()];
-    this.update(angle);
-  }
-  update(angle) {
-    this.su2Matrix = su2MatrixFromAxisAngle(this.rotationAxis, wrapDegrees(angle, 720));
-    this.transformedSpinors = [
-      this.spinors[0],
-      multiplySU2Spinor(this.su2Matrix, this.spinors[1]),
-    ];
-    setFlagOrientationFromSpinor(this.endpointFlags[0], this.transformedSpinors[0]);
-    setFlagOrientationFromSpinor(this.endpointFlags[1], this.transformedSpinors[1]);
-
-    const { vertices, colorWeights, indices, orientationSpinors } = beltSurface({
-      startSpinor: this.transformedSpinors[0],
-      endSpinor: this.transformedSpinors[1],
-    });
-    this.beltSpinors = orientationSpinors;
-    const colors = [];
-    const colorA = new THREE.Color(0x5b48cb), colorB = new THREE.Color(0xe96b62);
-    colorWeights.forEach((weight) => {
-      const color = colorA.clone().lerp(colorB, weight);
-      colors.push(color.r, color.g, color.b);
-    });
-    this.belt.geometry.dispose();
-    this.belt.geometry = new THREE.BufferGeometry();
-    this.belt.geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    this.belt.geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-    this.belt.geometry.setIndex(indices);
-    this.belt.geometry.computeVertexNormals();
   }
   dispose() { disposeGroup(this.group); }
 }
@@ -1070,7 +1008,6 @@ export class ConcentricShellView {
 export const VIEW_CLASSES = {
   flags: FlagView,
   su2: SU2View,
-  belt: BeltView,
   wires: WireFieldView,
   shells: ConcentricShellView,
 };
