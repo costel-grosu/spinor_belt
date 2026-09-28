@@ -2,6 +2,15 @@
 
 A no-build Three.js visualization of spinors, just C2 spinors that transform with SU(2).
 
+
+![Default view for rotating spinor - with bands](image-1.png)
+
+![Increased number of bands](image-2.png)
+
+![thin wires view](image.png)
+
+
+
 Not AI text:
 Basically we have a sphere, and in the middle we have "smth" rotating compared with the fixed sphere surface/rest of the world.
 This should show how "smth" which is connected by wires to the rest of the world, can rotate indefinitely without tangling the wires.
@@ -11,7 +20,7 @@ It was quite difficult to arrive at an agreement with GPT about what I want and 
 
 So in the middle of the sphere we put a rotating SU(2) matrix, which is implemented as a rotating unit quartenion.
 Basically this is a point on S3 (the sphere in 4 dimensions), and when we rotate it, it just means the point moves along a big circle around the S3 sphere.
-Then we interpolate from this central value put in the middle the S2 sphere (the normal sphere in 3 dimensions that we know and love) to the surface of the S2 sphere, where we have 0 rotation or transformation, i.e. the identity quartenion 1.
+Then we interpolate from this central value put in the middle of the S2 sphere (the normal sphere in 3 dimensions that we know and love) to the surface of the S2 sphere, where we have 0 rotation or transformation, i.e. the identity quartenion 1.
 
 Implementation wise, we have a 3d quartenion field that evolves in time, which interpolates from the rotating quartenion value in the centre (or a small sphere in the centre, for better visibility) to the identity quartenion on a outer sphere. Each unit quartenion value on the field is equivalent to a SU(2) matrix, or a value on S3 sphere, or with a SO(3) matrix after projection. Also for each SU(2) we have an equivalent spinor (just take the first column). So in a way this is a rotating spinor field. We use quartenions for the state/values, and after quartenion conjugation we get normal 3D rotations.
 
@@ -57,8 +66,15 @@ This is the initial suggestion from GPT, probably can be made to work too.
 
 ## HUD
 
-- Four view tabs switch between the concentric-shell, flag, SU(2), and
-  quaternion-field scenes.
+- Six view tabs switch between the concentric-shell, flag, SU(2),
+  quaternion-field, particle-flow, and grid-flow scenes.
+- The particle-flow view keeps the rotating textured core and emits temporary
+  ribbon traces along the same material integral lines. It defaults to a random
+  S³ circle, short 0.48-unit ribbons, and a fast 0.75-second lifetime; direction,
+  length, and lifetime are adjustable.
+- The grid-flow view releases a changing random subset of a configurable cubic
+  lattice as short-lived field traces. Its traces use the same flat 6:1 tube
+  cross-section as the concentric material tubes.
 - The angle slider scrubs the full 0–720° spinor cycle.
 - The speed slider controls automatic rotation from 0–900 degrees per second in every view.
 - The flag-count slider switches between 6, 12, 24, and 48 flags in the flag-based views.

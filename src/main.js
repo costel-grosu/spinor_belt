@@ -50,12 +50,15 @@ let vrSettingsPanel = null;
 let vrSettingsRows = [];
 
 const ui = {
+  patternCopy: document.querySelector("#pattern-copy"),
   title: document.querySelector("#view-title"), copy: document.querySelector("#view-copy"), kicker: document.querySelector("#view-kicker"),
   angle: document.querySelector("#angle-value"), slider: document.querySelector("#angle-slider"), pause: document.querySelector("#pause-button"),
   speed: document.querySelector("#speed-value"), speedSlider: document.querySelector("#speed-slider"),
   flagCount: document.querySelector("#flag-count-value"), flagCountSlider: document.querySelector("#flag-count-slider"),
   flagCountControl: document.querySelector("#flag-count-control"),
   shellOptions: document.querySelector("#shell-options"),
+  flowOptions: document.querySelector("#flow-options"),
+  gridFlowOptions: document.querySelector("#grid-flow-options"),
   shellMode: document.querySelector("#shell-mode"), shellAxis: document.querySelector("#shell-axis"),
   shellWire: document.querySelector("#shell-wire-slider"), shellWireValue: document.querySelector("#shell-wire-value"), shellWireLabel: document.querySelector("#shell-wire-label"),
   shellSamples: document.querySelector("#shell-sample-slider"), shellSampleValue: document.querySelector("#shell-sample-value"),
@@ -65,18 +68,55 @@ const ui = {
   shellShowShells: document.querySelector("#shell-show-shells"), shellShowEndpoints: document.querySelector("#shell-show-endpoints"),
   shellInnerOpaque: document.querySelector("#shell-inner-opaque"), shellSideTubes: document.querySelector("#shell-side-tubes"),
   shellFlatTubes: document.querySelector("#shell-flat-tubes"),
+  flowMode: document.querySelector("#flow-mode"),
+  flowDirection: document.querySelector("#flow-direction"),
+  flowLength: document.querySelector("#flow-length-slider"),
+  flowLengthValue: document.querySelector("#flow-length-value"),
+  flowLife: document.querySelector("#flow-life-slider"),
+  flowLifeValue: document.querySelector("#flow-life-value"),
+  gridFlowMode: document.querySelector("#grid-flow-mode"),
+  gridFlowDirection: document.querySelector("#grid-flow-direction"),
+  gridDensity: document.querySelector("#grid-density-slider"),
+  gridDensityValue: document.querySelector("#grid-density-value"),
+  gridActive: document.querySelector("#grid-active-slider"),
+  gridActiveValue: document.querySelector("#grid-active-value"),
+  gridLength: document.querySelector("#grid-length-slider"),
+  gridLengthValue: document.querySelector("#grid-length-value"),
+  gridLife: document.querySelector("#grid-life-slider"),
+  gridLifeValue: document.querySelector("#grid-life-value"),
   render: document.querySelector("#render-button"), reset: document.querySelector("#reset-button"), random: document.querySelector("#random-button"), vr: document.querySelector("#vr-button"),
 };
+
+const rotationPatternDescriptions = {
+  canonical: "An upside-down inner sphere spins about the vertical axis. Its S³ circle avoids the identity, keeping the top connection attached at the bottom and repeating after 720°.",
+  nonsingular: "A 720° spin about the selected axis. The surrounding rotations take a smooth detour through S³ so the connections unwind without a singularity.",
+  naive: "A direct blend from the fixed outer sphere to the rotating centre. At 360° the blend becomes undefined halfway through, showing why a detour is needed.",
+  random: "A randomly oriented great circle on S³ sets the central rotation and its starting orientation. The surrounding rotations blend toward the fixed outer boundary. Use Randomize for a new circle.",
+};
+
+for (const select of [ui.shellMode, ui.flowMode, ui.gridFlowMode]) {
+  for (const option of select.options) {
+    option.title = rotationPatternDescriptions[option.value];
+  }
+  const updateTooltip = () => {
+    select.title = rotationPatternDescriptions[select.value];
+  };
+  updateTooltip();
+  select.addEventListener("change", updateTooltip);
+  // Refresh after programmatic changes such as Randomize or VR controls.
+  select.addEventListener("pointerenter", updateTooltip);
+  select.addEventListener("focus", updateTooltip);
+}
 
 const flagCounts = [6, CONFIG.samples, CONFIG.samples * 2, CONFIG.samples * 4];
 let selectedFlagCount = CONFIG.samples;
 const shellOptions = {
-  wireCount: 12,
+  wireCount: 6,
   radialSamples: 81,
   innerRadius: 0.2,
   outerRadius: 2.35,
-  axis: "z",
-  mode: "nonsingular",
+  axis: "y",
+  mode: "canonical",
   showInner: true,
   showOuter: false,
   showShells: false,
@@ -84,6 +124,20 @@ const shellOptions = {
   innerOpaque: true,
   sideTubes: true,
   flatTubes: true,
+};
+const flowOptions = {
+  mode: "random",
+  direction: "outward",
+  ribbonLength: 0.48,
+  lifetime: 0.75,
+};
+const gridFlowOptions = {
+  mode: "random",
+  direction: "outward",
+  gridDensity: 6,
+  activeCount: 36,
+  tubeLength: 0.52,
+  lifetime: 0.85,
 };
 let currentKey = "shells";
 let currentView = new VIEW_CLASSES[currentKey]({
@@ -159,6 +213,8 @@ function replaceView(key, { preserveAxis = false } = {}) {
     flagCount: selectedFlagCount,
     axis,
     ...(key === "shells" ? shellOptions : {}),
+    ...(key === "flow" ? flowOptions : {}),
+    ...(key === "gridflow" ? gridFlowOptions : {}),
   });
   scene.add(currentView.group);
   applyPresentationTransform();
@@ -173,20 +229,33 @@ function selectView(key) {
   syncViewUI(key);
 }
 
+function syncPatternDescription() {
+  const select = { shells: ui.shellMode, flow: ui.flowMode, gridflow: ui.gridFlowMode }[currentKey];
+  const description = select ? rotationPatternDescriptions[select.value] : "";
+  ui.patternCopy.textContent = description;
+  ui.patternCopy.classList.toggle("hidden", !description);
+  if (select) select.title = description;
+}
+
 function syncViewUI(key) {
   const copy = VIEW_COPY[key];
   ui.kicker.textContent = copy.kicker;
   ui.title.textContent = copy.title;
   ui.copy.textContent = copy.copy;
+  syncPatternDescription();
   ui.random.classList.toggle("hidden", key === "flags");
   ui.random.textContent = key === "wires" ? "Toggle initial flip"
-      : key === "shells" ? "New S³ circle" : "New SU(2)";
+      : key === "shells" || key === "flow" || key === "gridflow"
+        ? "New S³ circle" : "New SU(2)";
   ui.flagCountControl.classList.toggle(
     "hidden",
-    key === "wires" || key === "shells",
+    key === "wires" || key === "shells" || key === "flow" ||
+      key === "gridflow",
   );
   ui.shellOptions.classList.toggle("hidden", key !== "shells");
-  ui.shellAxis.disabled = shellOptions.mode === "random";
+  ui.flowOptions.classList.toggle("hidden", key !== "flow");
+  ui.gridFlowOptions.classList.toggle("hidden", key !== "gridflow");
+  ui.shellAxis.disabled = ["random", "canonical"].includes(shellOptions.mode);
   ui.shellWireLabel.textContent = shellOptions.sideTubes ? "Tubes" : "Wires";
   ui.shellFlatTubes.disabled = !shellOptions.sideTubes;
   document.querySelectorAll(".view-tab").forEach((button) => button.classList.toggle("active", button.dataset.view === key));
@@ -209,7 +278,16 @@ ui.random.addEventListener("click", () => {
     ui.shellAxis.disabled = true;
     syncShellControlsFromState();
   }
+  if (currentKey === "flow") {
+    flowOptions.mode = "random";
+    ui.flowMode.value = "random";
+  }
+  if (currentKey === "gridflow") {
+    gridFlowOptions.mode = "random";
+    ui.gridFlowMode.value = "random";
+  }
   currentView.randomize?.(angle);
+  syncPatternDescription();
 });
 ui.slider.addEventListener("input", () => { angle = Number(ui.slider.value); paused = true; ui.pause.textContent = "Resume"; currentView.update(angle); });
 ui.speedSlider.addEventListener("input", () => {
@@ -223,6 +301,9 @@ ui.flagCountSlider.addEventListener("input", () => {
 });
 
 function updateShellOptions(changes) {
+  if ((changes.mode ?? shellOptions.mode) === "canonical") {
+    changes = { ...changes, axis: "y" };
+  }
   Object.assign(shellOptions, changes);
   syncShellControlsFromState();
   if (currentKey === "shells") currentView.setOptions?.(changes, angle);
@@ -230,6 +311,7 @@ function updateShellOptions(changes) {
 
 function syncShellControlsFromState() {
   ui.shellMode.value = shellOptions.mode;
+  syncPatternDescription();
   ui.shellAxis.value = shellOptions.axis;
   ui.shellWire.value = String(shellOptions.wireCount);
   ui.shellWireValue.textContent = String(shellOptions.wireCount);
@@ -246,7 +328,7 @@ function syncShellControlsFromState() {
   ui.shellInnerOpaque.checked = shellOptions.innerOpaque;
   ui.shellSideTubes.checked = shellOptions.sideTubes;
   ui.shellFlatTubes.checked = shellOptions.flatTubes;
-  ui.shellAxis.disabled = shellOptions.mode === "random";
+  ui.shellAxis.disabled = ["random", "canonical"].includes(shellOptions.mode);
   ui.shellWireLabel.textContent = shellOptions.sideTubes ? "Tubes" : "Wires";
   ui.shellFlatTubes.disabled = !shellOptions.sideTubes;
   drawVRSettingsPanel();
@@ -288,6 +370,63 @@ ui.shellSideTubes.addEventListener("change", () =>
   updateShellOptions({ sideTubes: ui.shellSideTubes.checked }));
 ui.shellFlatTubes.addEventListener("change", () =>
   updateShellOptions({ flatTubes: ui.shellFlatTubes.checked }));
+
+function updateFlowOptions(changes) {
+  Object.assign(flowOptions, changes);
+  ui.flowMode.value = flowOptions.mode;
+  ui.flowDirection.value = flowOptions.direction;
+  syncPatternDescription();
+  ui.flowLength.value = String(flowOptions.ribbonLength);
+  ui.flowLengthValue.textContent = flowOptions.ribbonLength.toFixed(2);
+  ui.flowLife.value = String(flowOptions.lifetime);
+  ui.flowLifeValue.textContent = `${flowOptions.lifetime.toFixed(2)} s`;
+  if (currentKey === "flow") currentView.setOptions?.(changes, angle);
+  drawVRSettingsPanel();
+}
+
+ui.flowMode.addEventListener("change", () =>
+  updateFlowOptions({ mode: ui.flowMode.value }));
+ui.flowDirection.addEventListener("change", () =>
+  updateFlowOptions({ direction: ui.flowDirection.value }));
+ui.flowLength.addEventListener("input", () =>
+  updateFlowOptions({ ribbonLength: Number(ui.flowLength.value) }));
+ui.flowLife.addEventListener("input", () =>
+  updateFlowOptions({ lifetime: Number(ui.flowLife.value) }));
+
+function updateGridFlowOptions(changes) {
+  Object.assign(gridFlowOptions, changes);
+  gridFlowOptions.activeCount = Math.min(
+    gridFlowOptions.activeCount,
+    gridFlowOptions.gridDensity ** 3 - 1,
+  );
+  ui.gridFlowMode.value = gridFlowOptions.mode;
+  ui.gridFlowDirection.value = gridFlowOptions.direction;
+  syncPatternDescription();
+  ui.gridDensity.value = String(gridFlowOptions.gridDensity);
+  ui.gridDensityValue.textContent = `${gridFlowOptions.gridDensity}³`;
+  ui.gridActive.value = String(gridFlowOptions.activeCount);
+  ui.gridActive.max = String(Math.min(80, gridFlowOptions.gridDensity ** 3 - 1));
+  ui.gridActiveValue.textContent = String(gridFlowOptions.activeCount);
+  ui.gridLength.value = String(gridFlowOptions.tubeLength);
+  ui.gridLengthValue.textContent = gridFlowOptions.tubeLength.toFixed(2);
+  ui.gridLife.value = String(gridFlowOptions.lifetime);
+  ui.gridLifeValue.textContent = `${gridFlowOptions.lifetime.toFixed(2)} s`;
+  if (currentKey === "gridflow") currentView.setOptions?.(changes, angle);
+  drawVRSettingsPanel();
+}
+
+ui.gridFlowMode.addEventListener("change", () =>
+  updateGridFlowOptions({ mode: ui.gridFlowMode.value }));
+ui.gridFlowDirection.addEventListener("change", () =>
+  updateGridFlowOptions({ direction: ui.gridFlowDirection.value }));
+ui.gridDensity.addEventListener("input", () =>
+  updateGridFlowOptions({ gridDensity: Number(ui.gridDensity.value) }));
+ui.gridActive.addEventListener("input", () =>
+  updateGridFlowOptions({ activeCount: Number(ui.gridActive.value) }));
+ui.gridLength.addEventListener("input", () =>
+  updateGridFlowOptions({ tubeLength: Number(ui.gridLength.value) }));
+ui.gridLife.addEventListener("input", () =>
+  updateGridFlowOptions({ lifetime: Number(ui.gridLife.value) }));
 
 function cycleSetting(values, current, direction) {
   const index = Math.max(0, values.indexOf(current));
@@ -386,7 +525,7 @@ vrSettingsRows = [
     label: "Visualization",
     value: () => VIEW_COPY[currentKey].kicker.slice(0, 2) + " " + currentKey,
     adjust: (direction) => {
-      const views = ["shells", "flags", "su2", "wires"];
+      const views = ["shells", "flags", "su2", "wires", "flow", "gridflow"];
       selectView(cycleSetting(views, currentKey, direction));
     },
   },
@@ -412,15 +551,16 @@ vrSettingsRows = [
     },
   },
   {
-    label: "Filling",
+    label: "Rotation pattern",
     value: () => ({
       nonsingular: "Nonsingular",
+      canonical: "Canonical",
       naive: "Naïve",
       random: "Random S³",
     })[shellOptions.mode],
     adjust: (direction) => updateShellOptions({
       mode: cycleSetting(
-        ["nonsingular", "naive", "random"],
+        ["nonsingular", "naive", "random", "canonical"],
         shellOptions.mode,
         direction,
       ),
@@ -432,7 +572,7 @@ vrSettingsRows = [
       ? "Derived"
       : shellOptions.axis.toUpperCase(),
     adjust: (direction) => {
-      if (shellOptions.mode !== "random") {
+      if (shellOptions.mode !== "random" && shellOptions.mode !== "canonical") {
         updateShellOptions({
           axis: cycleSetting(["x", "y", "z"], shellOptions.axis, direction),
         });
@@ -526,9 +666,68 @@ vrSettingsRows = [
     label: "New S³ circle",
     value: () => "Generate →",
     adjust: () => {
-      updateShellOptions({ mode: "random" });
+      if (currentKey === "flow") {
+        updateFlowOptions({ mode: "random" });
+      } else if (currentKey === "gridflow") {
+        updateGridFlowOptions({ mode: "random" });
+      } else {
+        updateShellOptions({ mode: "random" });
+      }
       if (currentKey === "shells") currentView.randomize?.(angle);
+      if (currentKey === "flow") currentView.randomize?.(angle);
+      if (currentKey === "gridflow") currentView.randomize?.(angle);
     },
+  },
+  {
+    label: "Flow direction",
+    value: () => flowOptions.direction === "outward" ? "Inside → out" : "Outside → in",
+    adjust: () => updateFlowOptions({
+      direction: flowOptions.direction === "outward" ? "inward" : "outward",
+    }),
+  },
+  {
+    label: "Ribbon length",
+    value: () => flowOptions.ribbonLength.toFixed(2),
+    adjust: (direction) => updateFlowOptions({
+      ribbonLength: THREE.MathUtils.clamp(
+        flowOptions.ribbonLength + direction * 0.08,
+        0.12,
+        1.4,
+      ),
+    }),
+  },
+  {
+    label: "Ribbon lifetime",
+    value: () => `${flowOptions.lifetime.toFixed(2)} s`,
+    adjust: (direction) => updateFlowOptions({
+      lifetime: THREE.MathUtils.clamp(
+        flowOptions.lifetime + direction * 0.1,
+        0.25,
+        4,
+      ),
+    }),
+  },
+  {
+    label: "Grid density",
+    value: () => `${gridFlowOptions.gridDensity}³`,
+    adjust: (direction) => updateGridFlowOptions({
+      gridDensity: THREE.MathUtils.clamp(
+        gridFlowOptions.gridDensity + direction,
+        3,
+        10,
+      ),
+    }),
+  },
+  {
+    label: "Grid active",
+    value: () => String(gridFlowOptions.activeCount),
+    adjust: (direction) => updateGridFlowOptions({
+      activeCount: THREE.MathUtils.clamp(
+        gridFlowOptions.activeCount + direction * 4,
+        8,
+        80,
+      ),
+    }),
   },
 ];
 vrSettingsPanel = createVRSettingsPanel();
@@ -680,7 +879,7 @@ function animate(time) {
   lastTime = time;
   processXRControllerInput(delta);
   if (!paused) angle = (angle + delta * rotationSpeed) % 720;
-  currentView.update(angle);
+  currentView.update(angle, paused ? 0 : delta);
   ui.slider.value = String(Math.round(angle));
   ui.angle.textContent = `${Math.round(angle)}°`;
   controls.enabled = !renderer.xr.isPresenting;

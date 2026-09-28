@@ -9,8 +9,8 @@ export const CONFIG = {
 export const VIEW_COPY = {
   shells: {
     kicker: "01 — Concentric material shells",
-    title: "Every radius keeps its place.",
-    copy: "Fixed angular labels connect a rotating inner sphere to a stationary outer one. The nonsingular quaternion filling lets every material wire return straight after 720°.",
+    title: "Two turns bring it home.",
+    copy: "The spinor at the centre rotates with a period of 4π (720°). Its connecting belts or wires bend and unwind without tangling, returning to their original shape after two full turns.",
   },
   flags: {
     kicker: "02 — The flag picture",
@@ -26,5 +26,15 @@ export const VIEW_COPY = {
     kicker: "04 — The quaternion field",
     title: "The whole space untangles.",
     copy: "Three families of wires follow a compact SU(2) rotation field. Its off-axis escape closes the loop at 720° while the outer boundary stays fixed.",
+  },
+  flow: {
+    kicker: "05 — Fleeting integral ribbons",
+    title: "Watch the field flow.",
+    copy: "Short-lived ribbons grow along the quaternion field and rapidly fade, revealing its evolving integral lines around a rotating textured core.",
+  },
+  gridflow: {
+    kicker: "06 — Grid-seeded tube flow",
+    title: "Order releases the flow.",
+    copy: "A changing random subset of a regular 3D lattice releases short-lived 6:1 tubes into the evolving quaternion field.",
   },
 };

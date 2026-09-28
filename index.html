@@ -29,8 +29,9 @@
 
       <section class="intro" aria-live="polite">
         <p id="view-kicker" class="kicker">01 — Concentric material shells</p>
-        <h1 id="view-title">Every radius keeps its place.</h1>
-        <p id="view-copy" class="lede">Fixed angular labels connect a rotating inner sphere to a stationary outer one. The nonsingular quaternion filling lets every material wire return straight after 720°.</p>
+        <h1 id="view-title">Two turns bring it home.</h1>
+        <p id="view-copy" class="lede">The spinor at the centre rotates with a period of 4π (720°). Its connecting belts or wires bend and unwind without tangling, returning to their original shape after two full turns.</p>
+        <p id="pattern-copy" class="lede hidden"></p>
       </section>
 
       <nav class="view-tabs" aria-label="Visualization views">
@@ -38,6 +39,8 @@
         <button class="view-tab" data-view="flags" type="button"><span>02</span> Flags</button>
         <button class="view-tab" data-view="su2" type="button"><span>03</span> SU(2)</button>
         <button class="view-tab" data-view="wires" type="button"><span>04</span> Wires</button>
+        <button class="view-tab" data-view="flow" type="button"><span>05</span> Flow</button>
+        <button class="view-tab" data-view="gridflow" type="button"><span>06</span> Grid</button>
       </nav>
 
       <aside class="control-panel">
@@ -58,12 +61,12 @@
           </div>
           <input id="flag-count-slider" type="range" min="0" max="3" step="1" value="1" aria-label="Number of flags: 6, 12, 24, or 48" />
         </div>
-        <details id="shell-options" class="shell-options">
-          <summary>Concentric shell settings</summary>
+        <div id="shell-options" class="shell-options">
           <div class="select-grid">
             <label>
-              Filling
+              Rotation pattern
               <select id="shell-mode">
+                <option value="canonical" selected>Canonical representation</option>
                 <option value="nonsingular">Nonsingular</option>
                 <option value="naive">Naïve comparison</option>
                 <option value="random">Random S³ circle</option>
@@ -73,14 +76,14 @@
               Spin axis
               <select id="shell-axis">
                 <option value="x">X axis</option>
-                <option value="y">Y axis</option>
-                <option value="z" selected>Z axis</option>
+                <option value="y" selected>Y axis</option>
+                <option value="z">Z axis</option>
               </select>
             </label>
           </div>
           <label class="compact-range">
-            <span><span id="shell-wire-label">Tubes</span> <output id="shell-wire-value">12</output></span>
-            <input id="shell-wire-slider" type="range" min="6" max="500" step="2" value="12" />
+            <span><span id="shell-wire-label">Tubes</span> <output id="shell-wire-value">6</output></span>
+            <input id="shell-wire-slider" type="range" min="6" max="500" step="2" value="6" />
           </label>
           <label class="compact-range">
             <span>Radial samples <output id="shell-sample-value">81</output></span>
@@ -103,6 +106,70 @@
             <label><input id="shell-side-tubes" type="checkbox" checked /> Square tubes</label>
             <label><input id="shell-flat-tubes" type="checkbox" checked /> Flat tubes (6:1)</label>
           </div>
+        </div>
+        <details id="flow-options" class="shell-options hidden">
+          <summary>Flow ribbon settings</summary>
+          <div class="select-grid">
+            <label>
+              Rotation pattern
+              <select id="flow-mode">
+                <option value="random" selected>Random S³ circle</option>
+                <option value="nonsingular">Nonsingular</option>
+                <option value="naive">Naïve comparison</option>
+              </select>
+            </label>
+            <label>
+              Flow direction
+              <select id="flow-direction">
+                <option value="outward" selected>Inside → out</option>
+                <option value="inward">Outside → in</option>
+              </select>
+            </label>
+          </div>
+          <label class="compact-range">
+            <span>Ribbon length <output id="flow-length-value">0.48</output></span>
+            <input id="flow-length-slider" type="range" min="0.12" max="1.40" step="0.02" value="0.48" />
+          </label>
+          <label class="compact-range">
+            <span>Lifetime <output id="flow-life-value">0.75 s</output></span>
+            <input id="flow-life-slider" type="range" min="0.25" max="4.00" step="0.05" value="0.75" />
+          </label>
+        </details>
+        <details id="grid-flow-options" class="shell-options hidden">
+          <summary>Grid tube settings</summary>
+          <div class="select-grid">
+            <label>
+              Rotation pattern
+              <select id="grid-flow-mode">
+                <option value="random" selected>Random S³ circle</option>
+                <option value="nonsingular">Nonsingular</option>
+                <option value="naive">Naïve comparison</option>
+              </select>
+            </label>
+            <label>
+              Flow direction
+              <select id="grid-flow-direction">
+                <option value="outward" selected>Along field</option>
+                <option value="inward">Against field</option>
+              </select>
+            </label>
+          </div>
+          <label class="compact-range">
+            <span>Grid density <output id="grid-density-value">6³</output></span>
+            <input id="grid-density-slider" type="range" min="3" max="10" step="1" value="6" />
+          </label>
+          <label class="compact-range">
+            <span>Active subset <output id="grid-active-value">36</output></span>
+            <input id="grid-active-slider" type="range" min="8" max="80" step="4" value="36" />
+          </label>
+          <label class="compact-range">
+            <span>Tube length <output id="grid-length-value">0.52</output></span>
+            <input id="grid-length-slider" type="range" min="0.15" max="1.50" step="0.05" value="0.52" />
+          </label>
+          <label class="compact-range">
+            <span>Lifetime <output id="grid-life-value">0.85 s</output></span>
+            <input id="grid-life-slider" type="range" min="0.25" max="4.00" step="0.05" value="0.85" />
+          </label>
         </details>
         <div class="button-row">
           <button id="pause-button" class="primary-button" type="button">Pause</button>

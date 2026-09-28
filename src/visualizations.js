@@ -2,6 +2,9 @@ import * as THREE from "three";
 import { CONFIG } from "./config.js";
 import {
   blochDirectionFromSpinor,
+  canonicalInnerQuaternion,
+  canonicalShellQuaternion,
+  cartesianBeltDirections,
   choosePerpendicularDirection,
   createSpinorArray,
   fibonacciSphereDirections,
@@ -332,7 +335,9 @@ export class ShellWireBundle {
   rebuild(wireCount, radialSamples) {
     this.wireCount = Math.max(6, Math.round(wireCount));
     this.radialSamples = Math.max(3, Math.round(radialSamples));
-    this.labels = fibonacciSphereDirections(this.wireCount);
+    this.labels = this.wireCount === 6
+      ? cartesianBeltDirections()
+      : fibonacciSphereDirections(this.wireCount);
     this.pointScratch = new Float32Array(
       this.wireCount * this.radialSamples * 3,
     );
@@ -474,7 +479,9 @@ export class ShellTubeBundle {
   rebuild(tubeCount, radialSamples) {
     this.tubeCount = Math.max(6, Math.round(tubeCount));
     this.radialSamples = Math.max(3, Math.round(radialSamples));
-    this.labels = fibonacciSphereDirections(this.tubeCount);
+    this.labels = this.tubeCount === 6
+      ? cartesianBeltDirections()
+      : fibonacciSphereDirections(this.tubeCount);
     this.centerScratch = new Float32Array(
       this.tubeCount * this.radialSamples * 3,
     );
@@ -772,12 +779,12 @@ export class ConcentricShellView {
   constructor(options = {}) {
     this.group = new THREE.Group();
     this.options = {
-      wireCount: 12,
+      wireCount: 6,
       radialSamples: 81,
       innerRadius: 0.2,
       outerRadius: 2.35,
-      axis: "z",
-      mode: "nonsingular",
+      axis: "y",
+      mode: "canonical",
       showInner: true,
       showOuter: false,
       showShells: false,
@@ -857,6 +864,7 @@ export class ConcentricShellView {
   }
 
   axisVector() {
+    if (this.options.mode === "canonical") return [0, 1, 0];
     if (this.options.mode === "random") return this.randomCircle.spaceAxis;
     return {
       x: [1, 0, 0],
@@ -884,6 +892,9 @@ export class ConcentricShellView {
 
   quaternionAt(shellCoordinate, time) {
     const profiledCoordinate = gaussianShellProfile(shellCoordinate);
+    if (this.options.mode === "canonical") {
+      return canonicalShellQuaternion(profiledCoordinate, time);
+    }
     const spinAxis = this.axisVector();
     if (this.options.mode === "random") {
       return normalizedQuaternionBlendFromIdentity(
@@ -908,8 +919,13 @@ export class ConcentricShellView {
   setOptions(nextOptions, angle = 0) {
     const previousWireCount = this.options.wireCount;
     const previousSamples = this.options.radialSamples;
+    const previousMode = this.options.mode;
     Object.assign(this.options, nextOptions);
+    if (this.options.mode === "canonical") {
+      this.options.axis = "y";
+    }
     if (
+      this.options.mode !== previousMode ||
       this.options.wireCount !== previousWireCount ||
       this.options.radialSamples !== previousSamples
     ) {
@@ -959,10 +975,7 @@ export class ConcentricShellView {
 
   randomize(angle = 0) {
     this.randomCircle = randomGreatCircle();
-    this.options.mode = "random";
-    this.updateAxisArrow();
-    this.lastRenderedAngle = Number.NaN;
-    this.update(angle);
+    this.setOptions({ mode: "random" }, angle);
   }
 
   update(angle) {
@@ -970,7 +983,9 @@ export class ConcentricShellView {
     if (Math.abs(angle - this.lastRenderedAngle) < updateThreshold) return;
     this.lastRenderedAngle = angle;
     const time = angle * Math.PI / 180;
-    const inner = this.options.mode === "random"
+    const inner = this.options.mode === "canonical"
+      ? canonicalInnerQuaternion(time)
+      : this.options.mode === "random"
       ? this.randomInnerQuaternion(time)
       : innerShellQuaternion(time, this.axisVector());
     this.innerRotor.quaternion.set(...inner.v, inner.w);
@@ -1005,9 +1020,697 @@ export class ConcentricShellView {
   dispose() { disposeGroup(this.group); }
 }
 
+const FLOW_RIBBON_SAMPLES = 11;
+
+function makeFlowRibbon(index, particleCount) {
+  const positions = new THREE.BufferAttribute(
+    new Float32Array(FLOW_RIBBON_SAMPLES * 2 * 3),
+    3,
+  );
+  positions.setUsage(THREE.DynamicDrawUsage);
+  const indices = [];
+  for (let sample = 0; sample < FLOW_RIBBON_SAMPLES - 1; sample++) {
+    const vertex = sample * 2;
+    indices.push(
+      vertex, vertex + 2, vertex + 1,
+      vertex + 1, vertex + 2, vertex + 3,
+    );
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", positions);
+  geometry.setIndex(indices);
+  const color = new THREE.Color().setHSL(
+    (index / particleCount + 0.54) % 1,
+    0.76,
+    0.49,
+  );
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  mesh.frustumCulled = false;
+  return {
+    mesh,
+    age: 0,
+    label: randomUnitDirection(),
+    centers: new Float32Array(FLOW_RIBBON_SAMPLES * 3),
+    center: new THREE.Vector3(),
+    tangent: new THREE.Vector3(),
+    side: new THREE.Vector3(),
+    radial: new THREE.Vector3(),
+    fallbackUp: new THREE.Vector3(0, 1, 0),
+    fallbackSide: new THREE.Vector3(1, 0, 0),
+  };
+}
+
+export class FlowRibbonView {
+  constructor(options = {}) {
+    this.group = new THREE.Group();
+    this.options = {
+      mode: "random",
+      direction: "outward",
+      ribbonLength: 0.48,
+      lifetime: 0.75,
+      innerRadius: 0.34,
+      outerRadius: 2.35,
+      particleCount: 72,
+      ...options,
+    };
+    this.randomCircle = randomGreatCircle();
+    this.ribbonGroup = new THREE.Group();
+    this.particles = Array.from(
+      { length: this.options.particleCount },
+      (_, index) => makeFlowRibbon(index, this.options.particleCount),
+    );
+    this.particles.forEach((particle) => {
+      particle.age = Math.random() * this.options.lifetime;
+      this.ribbonGroup.add(particle.mesh);
+    });
+
+    this.innerRotor = new THREE.Group();
+    this.innerTexture = makeInnerSphereTexture();
+    this.innerSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 32, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: this.innerTexture,
+        roughness: 0.52,
+      }),
+    );
+    this.innerSphere.scale.setScalar(this.options.innerRadius);
+    this.innerRotor.add(this.innerSphere);
+    this.group.add(this.ribbonGroup, this.innerRotor);
+    this.updateTextureAxis();
+    this.update(0, 0);
+  }
+
+  axisVector() {
+    return this.options.mode === "random"
+      ? this.randomCircle.spaceAxis
+      : [0, 0, 1];
+  }
+
+  textureAxisVector() {
+    return this.options.mode === "random"
+      ? this.randomCircle.bodyAxis
+      : this.axisVector();
+  }
+
+  randomInnerQuaternion(time) {
+    const cosine = Math.cos(time * 0.5);
+    const sine = Math.sin(time * 0.5);
+    return {
+      w: this.randomCircle.origin.w * cosine +
+        this.randomCircle.tangent.w * sine,
+      v: this.randomCircle.origin.v.map((component, index) =>
+        component * cosine + this.randomCircle.tangent.v[index] * sine),
+    };
+  }
+
+  quaternionAt(shellCoordinate, time) {
+    const profiledCoordinate = gaussianShellProfile(shellCoordinate);
+    const spinAxis = this.axisVector();
+    if (this.options.mode === "random") {
+      return normalizedQuaternionBlendFromIdentity(
+        profiledCoordinate,
+        this.randomInnerQuaternion(time),
+      );
+    }
+    if (this.options.mode === "naive") {
+      return normalizedQuaternionBlendFromIdentity(
+        profiledCoordinate,
+        innerShellQuaternion(time, spinAxis),
+      );
+    }
+    return nonsingularShellQuaternion(
+      profiledCoordinate,
+      time,
+      spinAxis,
+      choosePerpendicularDirection(spinAxis),
+    );
+  }
+
+  updateTextureAxis() {
+    this.innerSphere.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(...this.textureAxisVector()),
+    );
+  }
+
+  setOptions(nextOptions, angle = 0) {
+    const previousLifetime = this.options.lifetime;
+    Object.assign(this.options, nextOptions);
+    if (nextOptions.lifetime && previousLifetime > 0) {
+      this.particles.forEach((particle) => {
+        particle.age *= this.options.lifetime / previousLifetime;
+      });
+    }
+    this.updateTextureAxis();
+    this.update(angle, 0);
+  }
+
+  randomize(angle = 0) {
+    this.randomCircle = randomGreatCircle();
+    this.options.mode = "random";
+    this.particles.forEach((particle) => {
+      particle.label = randomUnitDirection();
+    });
+    this.updateTextureAxis();
+    this.update(angle, 0);
+  }
+
+  pointOnIntegralLine(label, radialFraction, time, target) {
+    const radius = THREE.MathUtils.lerp(
+      this.options.innerRadius,
+      this.options.outerRadius,
+      radialFraction,
+    );
+    const quaternion = this.quaternionAt(1 - radialFraction, time) ??
+      { w: 1, v: [0, 0, 0] };
+    const [x, y, z] = label;
+    const [qx, qy, qz] = quaternion.v;
+    const tx = 2 * (qy * z - qz * y);
+    const ty = 2 * (qz * x - qx * z);
+    const tz = 2 * (qx * y - qy * x);
+    target.set(
+      (x + quaternion.w * tx + qy * tz - qz * ty) * radius,
+      (y + quaternion.w * ty + qz * tx - qx * tz) * radius,
+      (z + quaternion.w * tz + qx * ty - qy * tx) * radius,
+    );
+  }
+
+  updateParticle(particle, time) {
+    const progress = particle.age / this.options.lifetime;
+    const span = this.options.outerRadius - this.options.innerRadius;
+    const grownLength = this.options.ribbonLength *
+      Math.min(1, progress / 0.22);
+    const travel = span + this.options.ribbonLength;
+    let startDistance;
+    let endDistance;
+    if (this.options.direction === "outward") {
+      const head = progress * travel;
+      startDistance = Math.max(0, head - grownLength);
+      endDistance = Math.min(span, head);
+    } else {
+      const head = span - progress * travel;
+      startDistance = Math.max(0, head);
+      endDistance = Math.min(span, head + grownLength);
+    }
+    if (endDistance <= startDistance) {
+      particle.mesh.visible = false;
+      return;
+    }
+
+    particle.mesh.visible = true;
+    const opacityEnvelope = Math.sin(Math.PI * progress);
+    particle.mesh.material.opacity = 0.82 *
+      Math.pow(Math.max(0, opacityEnvelope), 0.72);
+    const center = particle.center;
+    for (let sample = 0; sample < FLOW_RIBBON_SAMPLES; sample++) {
+      const along = sample / (FLOW_RIBBON_SAMPLES - 1);
+      const radialFraction = THREE.MathUtils.lerp(
+        startDistance / span,
+        endDistance / span,
+        along,
+      );
+      this.pointOnIntegralLine(particle.label, radialFraction, time, center);
+      const offset = sample * 3;
+      particle.centers[offset] = center.x;
+      particle.centers[offset + 1] = center.y;
+      particle.centers[offset + 2] = center.z;
+    }
+
+    const positions = particle.mesh.geometry.getAttribute("position");
+    const { tangent, side, radial } = particle;
+    const width = 0.026;
+    for (let sample = 0; sample < FLOW_RIBBON_SAMPLES; sample++) {
+      const centerOffset = sample * 3;
+      const before = Math.max(0, sample - 1) * 3;
+      const after = Math.min(FLOW_RIBBON_SAMPLES - 1, sample + 1) * 3;
+      tangent.set(
+        particle.centers[after] - particle.centers[before],
+        particle.centers[after + 1] - particle.centers[before + 1],
+        particle.centers[after + 2] - particle.centers[before + 2],
+      ).normalize();
+      radial.set(
+        particle.centers[centerOffset],
+        particle.centers[centerOffset + 1],
+        particle.centers[centerOffset + 2],
+      ).normalize();
+      side.crossVectors(tangent, radial);
+      if (side.lengthSq() < 1e-7) {
+        side.crossVectors(
+          tangent,
+          Math.abs(tangent.y) < 0.9
+            ? particle.fallbackUp
+            : particle.fallbackSide,
+        );
+      }
+      side.normalize().multiplyScalar(width);
+      const vertex = sample * 6;
+      positions.array[vertex] = particle.centers[centerOffset] + side.x;
+      positions.array[vertex + 1] =
+        particle.centers[centerOffset + 1] + side.y;
+      positions.array[vertex + 2] =
+        particle.centers[centerOffset + 2] + side.z;
+      positions.array[vertex + 3] =
+        particle.centers[centerOffset] - side.x;
+      positions.array[vertex + 4] =
+        particle.centers[centerOffset + 1] - side.y;
+      positions.array[vertex + 5] =
+        particle.centers[centerOffset + 2] - side.z;
+    }
+    positions.needsUpdate = true;
+  }
+
+  update(angle, delta = 0) {
+    const time = angle * Math.PI / 180;
+    const inner = this.options.mode === "random"
+      ? this.randomInnerQuaternion(time)
+      : innerShellQuaternion(time, this.axisVector());
+    this.innerRotor.quaternion.set(...inner.v, inner.w);
+    this.particles.forEach((particle) => {
+      particle.age += delta;
+      if (particle.age >= this.options.lifetime) {
+        particle.age %= this.options.lifetime;
+        particle.label = randomUnitDirection();
+      }
+      this.updateParticle(particle, time);
+    });
+  }
+
+  dispose() { disposeGroup(this.group); }
+}
+
+const GRID_TUBE_SAMPLES = 12;
+const GRID_TUBE_CORNERS = [
+  [1, 1],
+  [-1, 1],
+  [-1, -1],
+  [1, -1],
+];
+
+function makeGridFlowTube(index, tubeCount) {
+  const sides = 4;
+  const positions = new THREE.BufferAttribute(
+    new Float32Array(GRID_TUBE_SAMPLES * sides * 3),
+    3,
+  );
+  positions.setUsage(THREE.DynamicDrawUsage);
+  const indices = [];
+  for (let sample = 0; sample < GRID_TUBE_SAMPLES - 1; sample++) {
+    const ring = sample * sides;
+    const nextRing = ring + sides;
+    for (let side = 0; side < sides; side++) {
+      const nextSide = (side + 1) % sides;
+      indices.push(
+        ring + side, nextRing + side, ring + nextSide,
+        ring + nextSide, nextRing + side, nextRing + nextSide,
+      );
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", positions);
+  geometry.setIndex(indices);
+  const color = new THREE.Color().setHSL(
+    (index / Math.max(1, tubeCount) + 0.02) % 1,
+    0.7,
+    0.48,
+  );
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshStandardMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      roughness: 0.5,
+      metalness: 0.03,
+      flatShading: true,
+      side: THREE.DoubleSide,
+    }),
+  );
+  mesh.frustumCulled = false;
+  return {
+    mesh,
+    age: 0,
+    seedIndex: -1,
+    referenceAxis: randomUnitDirection(),
+    centers: new Float32Array(GRID_TUBE_SAMPLES * 3),
+    point: new THREE.Vector3(),
+    tangent: new THREE.Vector3(),
+    normal: new THREE.Vector3(),
+    binormal: new THREE.Vector3(),
+    reference: new THREE.Vector3(),
+  };
+}
+
+export class GridFlowTubeView {
+  constructor(options = {}) {
+    this.group = new THREE.Group();
+    this.options = {
+      mode: "random",
+      direction: "outward",
+      gridDensity: 6,
+      activeCount: 36,
+      tubeLength: 0.52,
+      lifetime: 0.85,
+      gridExtent: 1.55,
+      innerRadius: 0.34,
+      outerRadius: 2.35,
+      ...options,
+    };
+    this.randomCircle = randomGreatCircle();
+    this.gridSeeds = [];
+    this.particles = [];
+
+    this.gridPoints = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        color: 0x17211d,
+        size: 0.032,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        sizeAttenuation: true,
+      }),
+    );
+    this.tubeGroup = new THREE.Group();
+    this.innerRotor = new THREE.Group();
+    this.innerTexture = makeInnerSphereTexture();
+    this.innerSphere = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 32, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: this.innerTexture,
+        roughness: 0.52,
+      }),
+    );
+    this.innerSphere.scale.setScalar(this.options.innerRadius);
+    this.innerRotor.add(this.innerSphere);
+    this.group.add(this.gridPoints, this.tubeGroup, this.innerRotor);
+    this.rebuildGrid();
+    this.updateTextureAxis();
+    this.update(0, 0);
+  }
+
+  axisVector() {
+    return this.options.mode === "random"
+      ? this.randomCircle.spaceAxis
+      : [0, 0, 1];
+  }
+
+  textureAxisVector() {
+    return this.options.mode === "random"
+      ? this.randomCircle.bodyAxis
+      : this.axisVector();
+  }
+
+  randomInnerQuaternion(time) {
+    const cosine = Math.cos(time * 0.5);
+    const sine = Math.sin(time * 0.5);
+    return {
+      w: this.randomCircle.origin.w * cosine +
+        this.randomCircle.tangent.w * sine,
+      v: this.randomCircle.origin.v.map((component, index) =>
+        component * cosine + this.randomCircle.tangent.v[index] * sine),
+    };
+  }
+
+  quaternionAtPosition(position, time) {
+    const radius = Math.hypot(...position);
+    const shellCoordinate = THREE.MathUtils.clamp(
+      (this.options.outerRadius - radius) /
+        (this.options.outerRadius - this.options.innerRadius),
+      0,
+      1,
+    );
+    const profiledCoordinate = gaussianShellProfile(shellCoordinate);
+    const spinAxis = this.axisVector();
+    if (this.options.mode === "random") {
+      return normalizedQuaternionBlendFromIdentity(
+        profiledCoordinate,
+        this.randomInnerQuaternion(time),
+      );
+    }
+    if (this.options.mode === "naive") {
+      return normalizedQuaternionBlendFromIdentity(
+        profiledCoordinate,
+        innerShellQuaternion(time, spinAxis),
+      );
+    }
+    return nonsingularShellQuaternion(
+      profiledCoordinate,
+      time,
+      spinAxis,
+      choosePerpendicularDirection(spinAxis),
+    );
+  }
+
+  directionAt(position, time, referenceAxis) {
+    const quaternion = this.quaternionAtPosition(position, time) ??
+      { w: 1, v: [0, 0, 0] };
+    const [x, y, z] = referenceAxis;
+    const [qx, qy, qz] = quaternion.v;
+    const tx = 2 * (qy * z - qz * y);
+    const ty = 2 * (qz * x - qx * z);
+    const tz = 2 * (qx * y - qy * x);
+    const direction = [
+      x + quaternion.w * tx + qy * tz - qz * ty,
+      y + quaternion.w * ty + qz * tx - qx * tz,
+      z + quaternion.w * tz + qx * ty - qy * tx,
+    ];
+    const length = Math.hypot(...direction) || 1;
+    return direction.map((component) => component / length);
+  }
+
+  rk4Step(position, time, referenceAxis, stepSize) {
+    const offset = (point, direction, scale) =>
+      point.map((component, index) => component + direction[index] * scale);
+    const k1 = this.directionAt(position, time, referenceAxis);
+    const k2 = this.directionAt(
+      offset(position, k1, stepSize * 0.5),
+      time,
+      referenceAxis,
+    );
+    const k3 = this.directionAt(
+      offset(position, k2, stepSize * 0.5),
+      time,
+      referenceAxis,
+    );
+    const k4 = this.directionAt(
+      offset(position, k3, stepSize),
+      time,
+      referenceAxis,
+    );
+    return position.map((component, index) =>
+      component + stepSize *
+        (k1[index] + 2 * k2[index] + 2 * k3[index] + k4[index]) / 6);
+  }
+
+  rebuildGrid() {
+    const density = Math.max(3, Math.round(this.options.gridDensity));
+    const extent = this.options.gridExtent;
+    this.gridSeeds = [];
+    for (let xIndex = 0; xIndex < density; xIndex++) {
+      const x = THREE.MathUtils.lerp(
+        -extent,
+        extent,
+        xIndex / (density - 1),
+      );
+      for (let yIndex = 0; yIndex < density; yIndex++) {
+        const y = THREE.MathUtils.lerp(
+          -extent,
+          extent,
+          yIndex / (density - 1),
+        );
+        for (let zIndex = 0; zIndex < density; zIndex++) {
+          const z = THREE.MathUtils.lerp(
+            -extent,
+            extent,
+            zIndex / (density - 1),
+          );
+          this.gridSeeds.push([x, y, z]);
+        }
+      }
+    }
+    this.gridPoints.geometry.dispose();
+    this.gridPoints.geometry = new THREE.BufferGeometry().setFromPoints(
+      this.gridSeeds.map((seed) => new THREE.Vector3(...seed)),
+    );
+    this.rebuildParticles();
+  }
+
+  rebuildParticles() {
+    disposeGroup(this.tubeGroup);
+    const count = Math.min(
+      Math.max(1, Math.round(this.options.activeCount)),
+      Math.max(1, this.gridSeeds.length - 1),
+    );
+    const available = this.gridSeeds.map((_, index) => index);
+    for (let index = available.length - 1; index > 0; index--) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [available[index], available[swap]] = [available[swap], available[index]];
+    }
+    this.particles = Array.from({ length: count }, (_, index) => {
+      const particle = makeGridFlowTube(index, count);
+      particle.seedIndex = available[index];
+      particle.age = Math.random() * this.options.lifetime;
+      this.tubeGroup.add(particle.mesh);
+      return particle;
+    });
+  }
+
+  respawnParticle(particle) {
+    const used = new Set(
+      this.particles
+        .filter((candidate) => candidate !== particle)
+        .map((candidate) => candidate.seedIndex),
+    );
+    const available = this.gridSeeds
+      .map((_, index) => index)
+      .filter((index) => !used.has(index));
+    particle.seedIndex = available[
+      Math.floor(Math.random() * available.length)
+    ] ?? Math.floor(Math.random() * this.gridSeeds.length);
+    particle.referenceAxis = randomUnitDirection();
+    particle.age = 0;
+  }
+
+  updateTextureAxis() {
+    this.innerSphere.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(...this.textureAxisVector()),
+    );
+  }
+
+  setOptions(nextOptions, angle = 0) {
+    const previousDensity = this.options.gridDensity;
+    const previousCount = this.options.activeCount;
+    const previousLifetime = this.options.lifetime;
+    Object.assign(this.options, nextOptions);
+    if (this.options.gridDensity !== previousDensity) {
+      this.rebuildGrid();
+    } else if (this.options.activeCount !== previousCount) {
+      this.rebuildParticles();
+    } else if (nextOptions.lifetime && previousLifetime > 0) {
+      this.particles.forEach((particle) => {
+        particle.age *= this.options.lifetime / previousLifetime;
+      });
+    }
+    this.updateTextureAxis();
+    this.update(angle, 0);
+  }
+
+  randomize(angle = 0) {
+    this.randomCircle = randomGreatCircle();
+    this.options.mode = "random";
+    this.particles.forEach((particle) => {
+      particle.referenceAxis = randomUnitDirection();
+    });
+    this.updateTextureAxis();
+    this.update(angle, 0);
+  }
+
+  updateTube(particle, time) {
+    const progress = particle.age / this.options.lifetime;
+    const growth = THREE.MathUtils.smoothstep(progress, 0, 0.28);
+    if (growth < 0.002) {
+      particle.mesh.visible = false;
+      return;
+    }
+    particle.mesh.visible = true;
+    particle.mesh.material.opacity = 0.86 *
+      Math.pow(Math.max(0, Math.sin(Math.PI * progress)), 0.68);
+
+    let point = [...this.gridSeeds[particle.seedIndex]];
+    const stepSize = this.options.tubeLength * growth /
+      (GRID_TUBE_SAMPLES - 1) *
+      (this.options.direction === "outward" ? 1 : -1);
+    for (let sample = 0; sample < GRID_TUBE_SAMPLES; sample++) {
+      const offset = sample * 3;
+      particle.centers[offset] = point[0];
+      particle.centers[offset + 1] = point[1];
+      particle.centers[offset + 2] = point[2];
+      point = this.rk4Step(
+        point,
+        time,
+        particle.referenceAxis,
+        stepSize,
+      );
+    }
+
+    const positionAttribute = particle.mesh.geometry.getAttribute("position");
+    const { tangent, normal, binormal, reference } = particle;
+    const width = 0.026;
+    const thickness = width / 6;
+    for (let sample = 0; sample < GRID_TUBE_SAMPLES; sample++) {
+      const centerOffset = sample * 3;
+      const before = Math.max(0, sample - 1) * 3;
+      const after = Math.min(GRID_TUBE_SAMPLES - 1, sample + 1) * 3;
+      tangent.set(
+        particle.centers[after] - particle.centers[before],
+        particle.centers[after + 1] - particle.centers[before + 1],
+        particle.centers[after + 2] - particle.centers[before + 2],
+      ).normalize();
+      reference.set(...particle.referenceAxis);
+      normal.crossVectors(tangent, reference);
+      if (normal.lengthSq() < 1e-7) {
+        reference.set(Math.abs(tangent.y) < 0.9 ? 0 : 1,
+          Math.abs(tangent.y) < 0.9 ? 1 : 0, 0);
+        normal.crossVectors(tangent, reference);
+      }
+      normal.normalize();
+      binormal.crossVectors(tangent, normal).normalize();
+      const centerX = particle.centers[centerOffset];
+      const centerY = particle.centers[centerOffset + 1];
+      const centerZ = particle.centers[centerOffset + 2];
+      for (let side = 0; side < 4; side++) {
+        const vertex = (sample * 4 + side) * 3;
+        positionAttribute.array[vertex] = centerX +
+          normal.x * GRID_TUBE_CORNERS[side][0] * width +
+          binormal.x * GRID_TUBE_CORNERS[side][1] * thickness;
+        positionAttribute.array[vertex + 1] = centerY +
+          normal.y * GRID_TUBE_CORNERS[side][0] * width +
+          binormal.y * GRID_TUBE_CORNERS[side][1] * thickness;
+        positionAttribute.array[vertex + 2] = centerZ +
+          normal.z * GRID_TUBE_CORNERS[side][0] * width +
+          binormal.z * GRID_TUBE_CORNERS[side][1] * thickness;
+      }
+    }
+    positionAttribute.needsUpdate = true;
+    particle.mesh.geometry.computeVertexNormals();
+  }
+
+  update(angle, delta = 0) {
+    const time = angle * Math.PI / 180;
+    const inner = this.options.mode === "random"
+      ? this.randomInnerQuaternion(time)
+      : innerShellQuaternion(time, this.axisVector());
+    this.innerRotor.quaternion.set(...inner.v, inner.w);
+    this.particles.forEach((particle) => {
+      particle.age += delta;
+      if (particle.age >= this.options.lifetime) {
+        this.respawnParticle(particle);
+      }
+      this.updateTube(particle, time);
+    });
+  }
+
+  dispose() { disposeGroup(this.group); }
+}
+
 export const VIEW_CLASSES = {
   flags: FlagView,
   su2: SU2View,
   wires: WireFieldView,
   shells: ConcentricShellView,
+  flow: FlowRibbonView,
+  gridflow: GridFlowTubeView,
 };

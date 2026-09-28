@@ -421,6 +421,24 @@ export function innerShellQuaternion(time, spinAxis = [0, 0, 1]) {
   return axisAngleFieldQuaternion(spinAxis, time);
 }
 
+/** Upside-down rotor, spinning about world +Y: exp(j t/2)i.
+ * The great circle (w,x,y,z) = (0,cos(t/2),0,-sin(t/2)) avoids ±1.
+ * It sends +Y to -Y throughout the cycle; its lift closes only at 4π.
+ */
+export function canonicalInnerQuaternion(time) {
+  return fieldQuaternion(0, [Math.cos(time * 0.5), 0, -Math.sin(time * 0.5)]);
+}
+
+export function canonicalShellQuaternion(shellCoordinate, time) {
+  return normalizedQuaternionBlendFromIdentity(
+    shellCoordinate, canonicalInnerQuaternion(time),
+  );
+}
+
+export function cartesianBeltDirections() {
+  return [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+}
+
 /**
  * Explicit nonsingular filling between the fixed outer shell and the rotating
  * inner shell. This is the stereographic construction specified in
