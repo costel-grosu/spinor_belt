@@ -9,9 +9,23 @@ A no-build Three.js visualization of spinors, just C2 spinors that transform wit
 
 ![thin wires view](image.png)
 
+Some videos about interface:
+
+The "canonical view" used in the past by other youtube animations:
 
 
-Not AI text:
+https://github.com/user-attachments/assets/8b4d47cd-1330-4da3-97ae-0553b539a2d0
+
+Basic spinning with a random spinor:
+
+https://github.com/user-attachments/assets/a13ebc02-6ce6-436f-8a78-a9917b203327
+
+For some features of the interface (rotation speed, number of belts, etc), check the video spinor_belt_speed_tubes.mp4 from the git repository (too big for github readme).
+
+
+
+
+Some explanations, not AI text, after this section the rest of readme is a mix of human instructions and AI descriptions:
 Basically we have a sphere, and in the middle we have "smth" rotating compared with the fixed sphere surface/rest of the world.
 This should show how "smth" which is connected by wires to the rest of the world, can rotate indefinitely without tangling the wires.
 This is also a visualization of a spinor rotating, which means that after one rotation (2 pi) it swiches direction, and only after 2 rotations it returns to the initial value.
